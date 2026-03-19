@@ -791,6 +791,94 @@ textarea { min-height: 340px; resize: vertical; line-height: 1.75; font-family: 
 }
 .edit-btn:hover { border-color: var(--ember); color: var(--ember); }
 
+.delete-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--mist);
+  padding: 0.3rem 0.75rem;
+  border-radius: 2px;
+  font-family: var(--sans);
+  font-size: 0.72rem;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.delete-btn:hover { border-color: #e05555; color: #e05555; }
+
+/* Delete confirm modal */
+#delete-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: rgba(14,11,8,0.92);
+  backdrop-filter: blur(8px);
+  align-items: center;
+  justify-content: center;
+}
+#delete-modal.visible { display: flex; }
+.delete-modal-box {
+  background: var(--night-2);
+  border: 1px solid var(--border-mid);
+  border-radius: 6px;
+  padding: 2.5rem 2rem;
+  width: 100%;
+  max-width: 360px;
+  text-align: center;
+}
+.delete-modal-box h3 {
+  font-family: var(--serif);
+  font-size: 1.4rem;
+  font-weight: 300;
+  font-style: italic;
+  color: var(--cream);
+  margin-bottom: 0.6rem;
+}
+.delete-modal-box p {
+  font-size: 0.82rem;
+  color: var(--mist);
+  margin-bottom: 1.75rem;
+  line-height: 1.6;
+}
+.delete-modal-box .delete-title-preview {
+  font-family: var(--serif);
+  font-style: italic;
+  color: var(--cream-dim);
+}
+.delete-confirm-btn {
+  width: 100%;
+  background: #8B2020;
+  color: white;
+  border: none;
+  padding: 0.75rem;
+  border-radius: 2px;
+  font-family: var(--sans);
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s;
+  margin-bottom: 0.75rem;
+}
+.delete-confirm-btn:hover { background: #a82a2a; }
+.delete-cancel-btn {
+  display: block;
+  background: none;
+  border: none;
+  color: var(--mist);
+  font-family: var(--sans);
+  font-size: 0.75rem;
+  cursor: pointer;
+  margin: 0 auto;
+  letter-spacing: 0.06em;
+  transition: color 0.2s;
+}
+.delete-cancel-btn:hover { color: var(--cream-dim); }
+
 /* Empty state */
 .empty-state {
   padding: 4rem 2rem;
@@ -1048,6 +1136,7 @@ textarea { min-height: 340px; resize: vertical; line-height: 1.75; font-family: 
       </div>
       <div style="display:flex; gap:0.5rem; align-items:center;">
         <button class="edit-btn admin-only" style="display:none" id="post-edit-btn" onclick="editCurrentPost()">Edit</button>
+        <button class="delete-btn admin-only" style="display:none" id="post-delete-btn" onclick="openDeleteModalFromPost()">Delete</button>
         <button class="share-btn" id="share-btn" onclick="sharePost()">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
             <circle cx="12" cy="3" r="1.5"/><circle cx="12" cy="13" r="1.5"/><circle cx="3" cy="8" r="1.5"/>
@@ -1151,6 +1240,17 @@ textarea { min-height: 340px; resize: vertical; line-height: 1.75; font-family: 
       <button class="btn-publish" onclick="publishPost()">Publish</button>
       <button class="btn-draft" onclick="showToast('Saved as draft')">Save Draft</button>
     </div>
+  </div>
+</div>
+
+<!-- Delete confirm modal -->
+<div id="delete-modal">
+  <div class="delete-modal-box">
+    <div class="admin-eyebrow">Admin · Delete</div>
+    <h3>Remove this passage?</h3>
+    <p>This will permanently delete <span class="delete-title-preview" id="delete-title-preview"></span>. This cannot be undone.</p>
+    <button class="delete-confirm-btn" onclick="confirmDelete()">Yes, delete it</button>
+    <button class="delete-cancel-btn" onclick="closeDeleteModal()">Cancel</button>
   </div>
 </div>
 
@@ -1357,7 +1457,10 @@ function renderPosts(filter) {
           </div>` : ''}
         </div>
         <div style="display:flex; flex-direction:column; align-items:flex-end; gap:0.5rem;">
-          ${isAdmin ? `<button class="edit-btn" onclick="event.stopPropagation(); editPost(${post.id})">Edit</button>` : ''}
+          ${isAdmin ? `<div style="display:flex; gap:0.4rem;">
+            <button class="edit-btn" onclick="event.stopPropagation(); editPost(${post.id})">Edit</button>
+            <button class="delete-btn" onclick="event.stopPropagation(); openDeleteModal(${post.id})">Delete</button>
+          </div>` : ''}
           <div class="post-read-arrow">→</div>
         </div>
       </div>
@@ -1392,10 +1495,13 @@ function openPost(id) {
     playerWrap.style.display = 'none';
     resetPlayer();
   }
-  // Show edit button if admin
+  // Show edit/delete buttons if admin
   const editBtn = document.getElementById('post-edit-btn');
+  const deleteBtn = document.getElementById('post-delete-btn');
   if (editBtn) editBtn.style.display = isAdmin ? '' : 'none';
+  if (deleteBtn) deleteBtn.style.display = isAdmin ? '' : 'none';
   editBtn._postId = id;
+  deleteBtn._postId = id;
 
   // Next post
   let nextPostId = null;
@@ -1522,6 +1628,34 @@ function editPost(id) {
   document.querySelector('.editor-wrap h2').textContent = 'Edit this passage';
   document.querySelector('.btn-publish').textContent = 'Save Changes';
   showPage('new-post', null);
+}
+
+let deletingPostId = null;
+
+function openDeleteModal(id) {
+  const post = posts.find(p => p.id === id);
+  if (!post) return;
+  deletingPostId = id;
+  document.getElementById('delete-title-preview').textContent = '"' + post.title + '"';
+  document.getElementById('delete-modal').classList.add('visible');
+}
+
+function openDeleteModalFromPost() {
+  const id = document.getElementById('post-delete-btn')._postId;
+  if (id) openDeleteModal(id);
+}
+
+function closeDeleteModal() {
+  document.getElementById('delete-modal').classList.remove('visible');
+  deletingPostId = null;
+}
+
+function confirmDelete() {
+  if (!deletingPostId) return;
+  posts = posts.filter(p => p.id !== deletingPostId);
+  closeDeleteModal();
+  showToast('Post deleted');
+  showPage('archive', null);
 }
 
 function editCurrentPost() {
