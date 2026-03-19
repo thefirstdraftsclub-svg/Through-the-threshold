@@ -774,6 +774,23 @@ textarea { min-height: 340px; resize: vertical; line-height: 1.75; font-family: 
   flex-shrink: 0;
 }
 
+.edit-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--mist);
+  padding: 0.3rem 0.75rem;
+  border-radius: 2px;
+  font-family: var(--sans);
+  font-size: 0.72rem;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.edit-btn:hover { border-color: var(--ember); color: var(--ember); }
+
 /* Empty state */
 .empty-state {
   padding: 4rem 2rem;
@@ -1029,13 +1046,16 @@ textarea { min-height: 340px; resize: vertical; line-height: 1.75; font-family: 
         <span id="post-date-display" class="post-date"></span>
         <span id="post-tag-display" class="post-tag" style="align-self:flex-start;"></span>
       </div>
-      <button class="share-btn" id="share-btn" onclick="sharePost()">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-          <circle cx="12" cy="3" r="1.5"/><circle cx="12" cy="13" r="1.5"/><circle cx="3" cy="8" r="1.5"/>
-          <line x1="10.5" y1="3.9" x2="4.5" y2="7.1"/><line x1="4.5" y1="8.9" x2="10.5" y2="12.1"/>
-        </svg>
-        <span id="share-btn-label">Share</span>
-      </button>
+      <div style="display:flex; gap:0.5rem; align-items:center;">
+        <button class="edit-btn admin-only" style="display:none" id="post-edit-btn" onclick="editCurrentPost()">Edit</button>
+        <button class="share-btn" id="share-btn" onclick="sharePost()">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="12" cy="3" r="1.5"/><circle cx="12" cy="13" r="1.5"/><circle cx="3" cy="8" r="1.5"/>
+            <line x1="10.5" y1="3.9" x2="4.5" y2="7.1"/><line x1="4.5" y1="8.9" x2="10.5" y2="12.1"/>
+          </svg>
+          <span id="share-btn-label">Share</span>
+        </button>
+      </div>
     </div>
 
     <div id="audio-player-wrap" class="audio-player" style="display:none">
@@ -1336,7 +1356,10 @@ function renderPosts(filter) {
             Audio reading
           </div>` : ''}
         </div>
-        <div class="post-read-arrow">→</div>
+        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:0.5rem;">
+          ${isAdmin ? `<button class="edit-btn" onclick="event.stopPropagation(); editPost(${post.id})">Edit</button>` : ''}
+          <div class="post-read-arrow">→</div>
+        </div>
       </div>
     `).join('');
   });
@@ -1369,6 +1392,11 @@ function openPost(id) {
     playerWrap.style.display = 'none';
     resetPlayer();
   }
+  // Show edit button if admin
+  const editBtn = document.getElementById('post-edit-btn');
+  if (editBtn) editBtn.style.display = isAdmin ? '' : 'none';
+  editBtn._postId = id;
+
   // Next post
   let nextPostId = null;
   const currentIndex = posts.findIndex(p => p.id === id);
@@ -1478,20 +1506,61 @@ function setAudioFile(file) {
   document.getElementById('audio-chosen-preview').classList.add('visible');
 }
 
+let editingPostId = null;
+
+function editPost(id) {
+  const post = posts.find(p => p.id === id);
+  if (!post) return;
+  editingPostId = id;
+  document.getElementById('post-title-input').value = post.title;
+  document.getElementById('post-body-input').value = post.body;
+  document.querySelectorAll('.tag-select-btn').forEach(b => {
+    b.classList.toggle('active', b.textContent === post.tag);
+  });
+  selectedTag = post.tag;
+  document.querySelector('.editor-eyebrow').textContent = 'Admin · Editing Post';
+  document.querySelector('.editor-wrap h2').textContent = 'Edit this passage';
+  document.querySelector('.btn-publish').textContent = 'Save Changes';
+  showPage('new-post', null);
+}
+
+function editCurrentPost() {
+  const id = document.getElementById('post-edit-btn')._postId;
+  if (id) editPost(id);
+}
+
 function publishPost() {
   const title = document.getElementById('post-title-input').value.trim();
   const body = document.getElementById('post-body-input').value.trim();
   if (!title) { showToast('Please add a title'); return; }
   if (!body) { showToast('Please write something'); return; }
   const tag = selectedTag || 'Essay';
-  const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-  posts.unshift({ id: Date.now(), title, tag, date: dateStr, excerpt: body.split('.')[0] + '.', body, hasAudio: !!currentAudioFile, audioName: currentAudioFile ? currentAudioFile.name : null });
+
+  if (editingPostId) {
+    const post = posts.find(p => p.id === editingPostId);
+    if (post) {
+      post.title = title;
+      post.body = body;
+      post.tag = tag;
+      post.excerpt = body.split('.')[0] + '.';
+      if (currentAudioFile) { post.hasAudio = true; post.audioName = currentAudioFile.name; }
+    }
+    editingPostId = null;
+    showToast('Changes saved');
+  } else {
+    const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    posts.unshift({ id: Date.now(), title, tag, date: dateStr, excerpt: body.split('.')[0] + '.', body, hasAudio: !!currentAudioFile, audioName: currentAudioFile ? currentAudioFile.name : null });
+    showToast('Published to the archive');
+  }
+
   document.getElementById('post-title-input').value = '';
   document.getElementById('post-body-input').value = '';
   document.getElementById('audio-chosen-preview').classList.remove('visible');
   document.querySelectorAll('.tag-select-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('.editor-eyebrow').textContent = 'Admin · New Post';
+  document.querySelector('.editor-wrap h2').textContent = 'Write into the threshold';
+  document.querySelector('.btn-publish').textContent = 'Publish';
   selectedTag = null; currentAudioFile = null;
-  showToast('Published to the archive');
   setTimeout(() => showPage('archive', null), 600);
 }
 
