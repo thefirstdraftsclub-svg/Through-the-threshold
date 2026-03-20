@@ -515,7 +515,7 @@ nav.scrolled {
   height: 3px;
   border-radius: 100px;
   width: 0%;
-  transition: width 0.15s linear;
+  transition: width 0.1s ease-out;
   pointer-events: none;
 }
 .player-time { font-size: 0.7rem; color: var(--mist); margin-top: 0.4rem; }
@@ -1218,7 +1218,7 @@ textarea { min-height: 340px; resize: vertical; line-height: 1.75; font-family: 
         ondragover="handleDragOver(event)"
         ondragleave="handleDragLeave(event)"
         ondrop="handleDrop(event)">
-        <input type="file" accept="audio/*" id="audio-input" onchange="handleAudioSelect(event)">
+        <input type="file" accept="audio/*" id="audio-input" onchange="handleAudioSelect(event); console.log('input change fired')">
         <div class="drop-icon-wrap">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M9 18V6l3-3 3 3v12M9 18H6a2 2 0 01-2-2V8a2 2 0 012-2h3M15 18h3a2 2 0 002-2V8a2 2 0 00-2-2h-3"/>
@@ -1593,7 +1593,11 @@ function togglePlay() {
   }
 }
 
+let lastProgressUpdate = 0;
 audioEl.addEventListener('timeupdate', () => {
+  const now = Date.now();
+  if (now - lastProgressUpdate < 100) return;
+  lastProgressUpdate = now;
   if (audioEl.duration) {
     document.getElementById('progress-fill').style.width = (audioEl.currentTime / audioEl.duration * 100) + '%';
     document.getElementById('player-time').textContent = fmt(audioEl.currentTime) + ' / ' + fmt(audioEl.duration);
@@ -1650,11 +1654,17 @@ function handleDrop(e) {
   const f = e.dataTransfer.files[0];
   if (f && f.type.startsWith('audio/')) setAudioFile(f);
 }
-function handleAudioSelect(e) { if (e.target.files[0]) setAudioFile(e.target.files[0]); }
+function handleAudioSelect(e) { 
+  const file = e.target.files[0];
+  console.log('handleAudioSelect fired, file:', file ? file.name : 'none');
+  if (file) setAudioFile(file); 
+}
 function setAudioFile(file) {
+  console.log('Audio file selected:', file.name, 'size:', file.size, 'type:', file.type);
   currentAudioFile = file;
   document.getElementById('audio-chosen-name').textContent = file.name;
   document.getElementById('audio-chosen-preview').classList.add('visible');
+  console.log('currentAudioFile set to:', currentAudioFile ? currentAudioFile.name : 'null');
 }
 
 let editingPostId = null;
@@ -1683,6 +1693,8 @@ function editCurrentPost() {
 async function uploadAudio(file) {
   const ext = file.name.split('.').pop();
   const fileName = Date.now() + '.' + ext;
+  console.log('Uploading audio:', file.name, 'size:', file.size, 'type:', file.type);
+  console.log('Upload URL:', SUPABASE_URL + '/storage/v1/object/audio/' + fileName);
   const res = await fetch(SUPABASE_URL + '/storage/v1/object/audio/' + fileName, {
     method: 'POST',
     headers: {
@@ -1693,14 +1705,19 @@ async function uploadAudio(file) {
     },
     body: file
   });
+  console.log('Audio upload response:', res.status, res.statusText);
   if (!res.ok) {
     const err = await res.text();
+    console.error('Audio upload error:', err);
     throw new Error('Audio upload failed: ' + err);
   }
-  return SUPABASE_URL + '/storage/v1/object/public/audio/' + fileName;
+  const publicUrl = SUPABASE_URL + '/storage/v1/object/public/audio/' + fileName;
+  console.log('Audio uploaded successfully:', publicUrl);
+  return publicUrl;
 }
 
 async function publishPost() {
+  console.log('publishPost called, currentAudioFile:', currentAudioFile ? currentAudioFile.name : 'null');
   const title = document.getElementById('post-title-input').value.trim();
   const body = document.getElementById('post-body-input').value.trim();
   if (!title) { showToast('Please add a title'); return; }
