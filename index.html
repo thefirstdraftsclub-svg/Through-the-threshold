@@ -1239,6 +1239,21 @@ textarea { min-height: 340px; resize: vertical; line-height: 1.75; font-family: 
     <div class="submit-row">
       <button class="btn-publish" onclick="publishPost()">Publish</button>
       <button class="btn-draft" onclick="showToast('Saved as draft')">Save Draft</button>
+      <button class="btn-draft" onclick="testConnection()" style="border-color:var(--sage); color:var(--sage);">Test Connection</button>
+    </div>
+
+    <div class="form-section" style="margin-top:2rem;">
+      <h3>Posts data</h3>
+      <p style="font-size:0.82rem; color:var(--mist); line-height:1.6; margin-bottom:1.25rem;">Export all posts as a JSON file to back them up, or import a previously saved file to restore them on any device.</p>
+      <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+        <button class="btn-draft" onclick="exportPosts()">
+          ↓ Export posts.json
+        </button>
+        <label style="display:inline-flex; align-items:center; gap:0.5rem; background:transparent; border:1px solid var(--border); color:var(--mist); padding:0.8rem 1.5rem; border-radius:2px; font-family:var(--sans); font-size:0.8rem; font-weight:400; letter-spacing:0.08em; text-transform:uppercase; cursor:pointer; transition:all 0.2s;" onmouseover="this.style.borderColor='rgba(245,237,216,0.2)'; this.style.color='rgba(245,237,216,0.6)'" onmouseout="this.style.borderColor=''; this.style.color=''">
+          ↑ Import posts.json
+          <input type="file" accept=".json" onchange="importPosts(event)" style="display:none;">
+        </label>
+      </div>
     </div>
   </div>
 </div>
@@ -1347,48 +1362,77 @@ window.addEventListener('scroll', () => {
   }
 });
 
+// ---- SUPABASE ----
+const SUPABASE_URL = 'https://igwbjkzzlcvennkkokki.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlnd2Jqa3p6bGN2ZW5ua2tva2tpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5Njk3ODEsImV4cCI6MjA4OTU0NTc4MX0.OxNqd4-UzZ-_kjVVJlijG_Wr1eFfHqKq1noAAjZ5EGk';
+
+window.sbFetch = async function(path, options = {}) {
+  const url = SUPABASE_URL + '/rest/v1/' + path;
+  const headers = {
+    'apikey': SUPABASE_KEY,
+    'Authorization': 'Bearer ' + SUPABASE_KEY,
+    'Content-Type': 'application/json',
+    'Prefer': options.prefer || 'return=representation',
+    ...options.headers
+  };
+  console.log('sbFetch:', options.method || 'GET', url);
+  const res = await fetch(url, { ...options, headers });
+  console.log('sbFetch response:', res.status, res.statusText);
+  if (!res.ok) {
+    const errText = await res.text();
+    console.error('sbFetch error body:', errText);
+    throw new Error(errText);
+  }
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
+async function sbFetch(path, options = {}) {
+  return window.sbFetch(path, options);
+}
+
+function mapPost(p) {
+  return {
+    id: p.id,
+    title: p.title,
+    tag: p.tag || 'Essay',
+    date: p.date || '',
+    excerpt: p.excerpt || '',
+    body: p.body || '',
+    hasAudio: p.has_audio || false,
+    audioName: p.audio_name || null
+  };
+}
+
 // ---- DATA ----
 const tagColors = { Essay: '', Reflection: 'sage', Story: 'gold', Letter: '' };
 
-const DEMO_POSTS = [
-  {
-    id: 1,
-    title: 'On the slowness of bread',
-    tag: 'Essay',
-    date: 'March 12, 2026',
-    excerpt: 'There is something quietly radical about making bread by hand in a world that rewards speed. Flour, water, salt — and time you cannot rush.',
-    body: `There is something quietly radical about making bread by hand in a world that rewards speed. Flour, water, salt — and time you cannot rush. I have been baking a simple loaf every Sunday for three years now, and I have never once managed to hurry it.\n\nThe dough doesn't care about my schedule. It rises when it is ready. The crust cracks when the oven's heat has done its work, not before. And in that stubbornness there is a lesson I keep failing to fully learn: some things cannot be optimised.\n\nWe are surrounded by systems designed to shave seconds off every transaction, every commute, every exchange. But bread is indifferent to all of it. It asks only that you wait.`,
-    hasAudio: true,
-    audioName: 'on-slowness-of-bread.mp3'
-  },
-  {
-    id: 2,
-    title: 'A letter to the version of me who was afraid',
-    tag: 'Letter',
-    date: 'February 28, 2026',
-    excerpt: 'You will not believe how many of the things you worried about simply never happened. And the ones that did — you survived them, and they made you gentler.',
-    body: `You will not believe how many of the things you worried about simply never happened. And the ones that did — you survived them, and they made you gentler.\n\nI wish I could send you something practical. A list of outcomes. A calendar showing which days would turn out fine. But I know you well enough to know you would only find new anxieties to fill the gaps.\n\nSo instead let me just say this: the things that held you together in the dark were smaller than you thought. A cup of tea made just the way you liked. The sound of rain on a window. Someone saying your name like they were glad you existed.\n\nHold onto those. They will keep holding you.`,
-    hasAudio: false,
-    audioName: null
-  },
-  {
-    id: 3,
-    title: 'The neighbourhood in October',
-    tag: 'Reflection',
-    date: 'October 7, 2025',
-    excerpt: 'Every autumn the same light falls across the same rooftops and yet it never quite looks the same as last year. I think this is what people mean when they talk about home.',
-    body: `Every autumn the same light falls across the same rooftops and yet it never quite looks the same as last year. I think this is what people mean when they talk about home.\n\nIt is not the place itself — the cracked pavement, the neighbour's overgrown hedge, the bakery that changes its name every eighteen months. It is the particular way the light angles through in October, soft and amber and slanted like an apology.\n\nI walk the same route most mornings. I have walked it so many times I know which step on which path makes the particular hollow sound, which corner smells of cut grass even in winter. And still, in October, I find myself slowing down.`,
-    hasAudio: true,
-    audioName: 'neighbourhood-october.mp3'
-  }
-];
-
-let posts = [...DEMO_POSTS];
+let posts = [];
 let selectedTag = null;
 let currentAudioFile = null;
 const audioEl = document.getElementById('audio-el');
 let isPlaying = false;
 let currentFilter = 'all';
+
+async function loadPosts() {
+  try {
+    showLoadingState();
+    const data = await sbFetch('posts?order=created_at.desc');
+    posts = (data || []).map(mapPost);
+    renderPosts(currentFilter);
+  } catch (e) {
+    console.error(e);
+    showToast('Could not load posts');
+    renderPosts(currentFilter);
+  }
+}
+
+function showLoadingState() {
+  ['posts-container', 'posts-container-2'].forEach(id => {
+    const c = document.getElementById(id);
+    if (c) c.innerHTML = '<div class="empty-state" style="opacity:0.4;">Loading passages…</div>';
+  });
+}
 
 // ---- ADMIN PASSWORD GATE ----
 const ADMIN_PASSWORD = 'threshold2026';
@@ -1427,7 +1471,6 @@ function checkAdminPassword() {
   }
 }
 
-// Trigger modal when ?admin=true is in URL
 if (new URLSearchParams(window.location.search).get('admin') === 'true') {
   window.addEventListener('DOMContentLoaded', () => openAdminModal(), { once: true });
 }
@@ -1495,7 +1538,6 @@ function openPost(id) {
     playerWrap.style.display = 'none';
     resetPlayer();
   }
-  // Show edit/delete buttons if admin
   const editBtn = document.getElementById('post-edit-btn');
   const deleteBtn = document.getElementById('post-delete-btn');
   if (editBtn) editBtn.style.display = isAdmin ? '' : 'none';
@@ -1503,11 +1545,8 @@ function openPost(id) {
   editBtn._postId = id;
   deleteBtn._postId = id;
 
-  // Next post
-  let nextPostId = null;
   const currentIndex = posts.findIndex(p => p.id === id);
   const nextPost = posts[currentIndex + 1] || null;
-  nextPostId = nextPost ? nextPost.id : null;
   const nextSection = document.getElementById('next-post-section');
   if (nextPost) {
     document.getElementById('next-post-title').textContent = nextPost.title;
@@ -1517,7 +1556,6 @@ function openPost(id) {
   } else {
     nextSection.style.display = 'none';
   }
-
   showPage('post', null);
 }
 
@@ -1534,7 +1572,7 @@ function resetPlayer() {
 
 function togglePlay() {
   if (!audioEl.src || audioEl.src === window.location.href) {
-    showToast('No audio file for demo posts');
+    showToast('No audio file available');
     return;
   }
   if (isPlaying) {
@@ -1577,7 +1615,7 @@ function showPage(name, linkEl) {
   document.querySelectorAll('.nav-links a').forEach(a => a.classList.remove('active'));
   if (linkEl) linkEl.classList.add('active');
   window.scrollTo(0, 0);
-  if (name === 'archive') renderPosts(currentFilter);
+  if (name === 'archive' || name === 'home') renderPosts(currentFilter);
   progressBar.style.opacity = name === 'post' ? '1' : '0';
   progressBar.style.width = '0%';
 }
@@ -1630,6 +1668,52 @@ function editPost(id) {
   showPage('new-post', null);
 }
 
+function editCurrentPost() {
+  const id = document.getElementById('post-edit-btn')._postId;
+  if (id) editPost(id);
+}
+
+async function publishPost() {
+  const title = document.getElementById('post-title-input').value.trim();
+  const body = document.getElementById('post-body-input').value.trim();
+  if (!title) { showToast('Please add a title'); return; }
+  if (!body) { showToast('Please write something'); return; }
+  const tag = selectedTag || 'Essay';
+  const excerpt = body.split('.')[0] + '.';
+
+  try {
+    if (editingPostId) {
+      await sbFetch('posts?id=eq.' + editingPostId, {
+        method: 'PATCH',
+        body: JSON.stringify({ title, body, tag, excerpt })
+      });
+      editingPostId = null;
+      showToast('Changes saved');
+    } else {
+      const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+      await sbFetch('posts', {
+        method: 'POST',
+        body: JSON.stringify({ title, body, tag, excerpt, date: dateStr, has_audio: !!currentAudioFile, audio_name: currentAudioFile ? currentAudioFile.name : null })
+      });
+      showToast('Published to the archive');
+    }
+
+    document.getElementById('post-title-input').value = '';
+    document.getElementById('post-body-input').value = '';
+    document.getElementById('audio-chosen-preview').classList.remove('visible');
+    document.querySelectorAll('.tag-select-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector('.editor-eyebrow').textContent = 'Admin · New Post';
+    document.querySelector('.editor-wrap h2').textContent = 'Write into the threshold';
+    document.querySelector('.btn-publish').textContent = 'Publish';
+    selectedTag = null; currentAudioFile = null;
+    await loadPosts();
+    setTimeout(() => showPage('archive', null), 400);
+  } catch (e) {
+    showToast('Error saving — check connection');
+    console.error(e);
+  }
+}
+
 let deletingPostId = null;
 
 function openDeleteModal(id) {
@@ -1650,52 +1734,18 @@ function closeDeleteModal() {
   deletingPostId = null;
 }
 
-function confirmDelete() {
+async function confirmDelete() {
   if (!deletingPostId) return;
-  posts = posts.filter(p => p.id !== deletingPostId);
-  closeDeleteModal();
-  showToast('Post deleted');
-  showPage('archive', null);
-}
-
-function editCurrentPost() {
-  const id = document.getElementById('post-edit-btn')._postId;
-  if (id) editPost(id);
-}
-
-function publishPost() {
-  const title = document.getElementById('post-title-input').value.trim();
-  const body = document.getElementById('post-body-input').value.trim();
-  if (!title) { showToast('Please add a title'); return; }
-  if (!body) { showToast('Please write something'); return; }
-  const tag = selectedTag || 'Essay';
-
-  if (editingPostId) {
-    const post = posts.find(p => p.id === editingPostId);
-    if (post) {
-      post.title = title;
-      post.body = body;
-      post.tag = tag;
-      post.excerpt = body.split('.')[0] + '.';
-      if (currentAudioFile) { post.hasAudio = true; post.audioName = currentAudioFile.name; }
-    }
-    editingPostId = null;
-    showToast('Changes saved');
-  } else {
-    const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-    posts.unshift({ id: Date.now(), title, tag, date: dateStr, excerpt: body.split('.')[0] + '.', body, hasAudio: !!currentAudioFile, audioName: currentAudioFile ? currentAudioFile.name : null });
-    showToast('Published to the archive');
+  try {
+    await sbFetch('posts?id=eq.' + deletingPostId, { method: 'DELETE', prefer: 'return=minimal' });
+    closeDeleteModal();
+    showToast('Post deleted');
+    await loadPosts();
+    showPage('archive', null);
+  } catch (e) {
+    showToast('Error deleting — check connection');
+    console.error(e);
   }
-
-  document.getElementById('post-title-input').value = '';
-  document.getElementById('post-body-input').value = '';
-  document.getElementById('audio-chosen-preview').classList.remove('visible');
-  document.querySelectorAll('.tag-select-btn').forEach(b => b.classList.remove('active'));
-  document.querySelector('.editor-eyebrow').textContent = 'Admin · New Post';
-  document.querySelector('.editor-wrap h2').textContent = 'Write into the threshold';
-  document.querySelector('.btn-publish').textContent = 'Publish';
-  selectedTag = null; currentAudioFile = null;
-  setTimeout(() => showPage('archive', null), 600);
 }
 
 function openNextPost() {
@@ -1716,6 +1766,30 @@ function sharePost() {
   }).catch(() => showToast('Could not copy link'));
 }
 
+function exportPosts() {
+  const data = JSON.stringify(posts, null, 2);
+  const blob = new Blob([data], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'posts.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('posts.json downloaded');
+}
+
+async function testConnection() {
+  showToast('Testing connection…');
+  try {
+    const result = await sbFetch('posts?limit=1');
+    showToast('Connected! Posts table found ✓');
+    console.log('Connection test result:', result);
+  } catch (e) {
+    showToast('Connection failed: ' + e.message.substring(0, 60));
+    console.error('Connection test error:', e);
+  }
+}
+
 function showToast(msg) {
   const t = document.getElementById('toast');
   document.getElementById('toast-msg').textContent = msg;
@@ -1723,7 +1797,7 @@ function showToast(msg) {
   setTimeout(() => t.classList.remove('show'), 2800);
 }
 
-renderPosts('all');
+loadPosts();
 </script>
 </body>
 </html>
